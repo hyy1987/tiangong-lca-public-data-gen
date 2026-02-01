@@ -1,6 +1,7 @@
 import glob
 import json
 import os
+from datetime import date
 
 
 def extract_model_name_from_json(json_file_path):
@@ -70,9 +71,35 @@ def extract_version_from_json(json_file_path):
                         return version
         
         return "Unknown"
+
     except Exception as e:
         print(f"提取版本失败 {json_file_path}: {e}")
         return "Unknown"
+
+def extract_reference_quantity_from_json(json_file_path):
+    """从JSON文件中提取 quantitativeReference.referenceQuantity（用于 list.json 展示）"""
+    try:
+        with open(json_file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        lcia_dataset = data.get('LCIAMethodDataSet', {})
+        if not isinstance(lcia_dataset, dict):
+            return None
+
+        lcia_info = lcia_dataset.get('LCIAMethodInformation', {})
+        if not isinstance(lcia_info, dict):
+            return None
+
+        quantitative_reference = lcia_info.get('quantitativeReference', {})
+        if not isinstance(quantitative_reference, dict):
+            return None
+
+        reference_quantity = quantitative_reference.get('referenceQuantity')
+        return reference_quantity
+
+    except Exception as e:
+        print(f"提取referenceQuantity失败 {json_file_path}: {e}")
+        return None
 
 def calculate_file_size(file_size_bytes):
     """计算文件大小的可读格式"""
@@ -84,7 +111,7 @@ def calculate_file_size(file_size_bytes):
         return f"{file_size_bytes / (1024 * 1024):.1f}MB"
 
 def update_list_with_model_names():
-    """基于data2目录中的JSON文件重新生成list.json"""
+    """基于 data/json 中的JSON文件重新生成 data/list.json"""
     
     # 读取list_order.txt文件获取排序顺序
     order_list = []
@@ -96,10 +123,11 @@ def update_list_with_model_names():
         print("⚠ 未找到list_order.txt文件，将使用默认排序")
     
     # 获取所有JSON文件
-    json_files = glob.glob("data/json/*.json")
+    source_dir = os.path.join("data", "json")
+    json_files = glob.glob(os.path.join(source_dir, "*.json"))
     
     if not json_files:
-        print("在data2目录中未找到JSON文件")
+        print(f"在 {source_dir} 中未找到JSON文件")
         return
     
     print(f"找到 {len(json_files)} 个JSON文件")
@@ -110,6 +138,7 @@ def update_list_with_model_names():
             "description": "LCIA Methods compressed files list",
             "totalFiles": len(json_files),
             "format": "gzip compressed JSON",
+            "lastUpdated": date.today().isoformat(),
         },
         "files": []
     }
@@ -133,6 +162,7 @@ def update_list_with_model_names():
             model_name = extract_model_name_from_json(json_file)
             description = extract_description_from_json(json_file)
             version = extract_version_from_json(json_file)
+            reference_quantity = extract_reference_quantity_from_json(json_file)
             
             # 计算原始文件大小
             original_size = os.path.getsize(json_file)
@@ -140,7 +170,7 @@ def update_list_with_model_names():
             
             # 检查对应的压缩文件
             compressed_filename = f"{file_uuid}_{version}.json.gz"
-            compressed_file_path = os.path.join("data", "compressed", compressed_filename)
+            compressed_file_path = os.path.join("data", "json_compressed", compressed_filename)
             
             if os.path.exists(compressed_file_path):
                 compressed_size = os.path.getsize(compressed_file_path)
@@ -159,6 +189,9 @@ def update_list_with_model_names():
                 "description": description,
                 "impactModel": model_name if model_name else "Unknown"
             }
+
+            if reference_quantity:
+                file_entry["referenceQuantity"] = reference_quantity
             
             # 将文件条目存储到字典中，以compressed_filename为键
             file_entries[compressed_filename] = file_entry
@@ -224,7 +257,7 @@ def show_model_name_summary():
     
     model_names = {}
     for file_entry in list_data['files']:
-        model_name = file_entry.get('modelName', 'Unknown')
+        model_name = file_entry.get('impactModel') or file_entry.get('modelName') or 'Unknown'
         if model_name in model_names:
             model_names[model_name] += 1
         else:
@@ -235,6 +268,6 @@ def show_model_name_summary():
         print(f"{model_name}: {count} 个文件")
 
 if __name__ == "__main__":
-    print("基于data2目录重新生成list.json...")
+    print("基于 data/json 重新生成 list.json...")
     update_list_with_model_names()
     show_model_name_summary()
