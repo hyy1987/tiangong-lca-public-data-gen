@@ -1,6 +1,7 @@
 import glob
 import gzip
 import os
+import shutil
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -12,8 +13,7 @@ def compress_json_files():
     source_dir = BASE_DIR / "data"
 
     # 获取所有.min.json文件
-    json_pattern = str(source_dir / "*.min.json")
-    json_files = sorted(glob.glob(json_pattern))
+    json_files = sorted(source_dir.glob("*.min.json"))
 
     if not json_files:
         print(f"在 {source_dir} 中未找到 .min.json 文件")
@@ -27,26 +27,22 @@ def compress_json_files():
 
     for json_file in json_files:
         try:
-            file_path = Path(json_file)
+            file_path = json_file
 
             print(f"\n处理文件: {file_path.name}")
 
-            target_path = Path(f"{json_file}.gz")
-            target_file = str(target_path)
+            target_path = file_path.with_suffix(f"{file_path.suffix}.gz")
 
             if target_path.exists():
                 print(f"⏭ 文件已存在，跳过: {target_path.name}")
                 skipped_count += 1
                 continue
 
-            with open(json_file, "r", encoding="utf-8") as f:
-                json_content = f.read()
+            with file_path.open("rb") as source_file, gzip.open(target_path, "wb") as target_file:
+                shutil.copyfileobj(source_file, target_file)
 
-            with gzip.open(target_file, "wt", encoding="utf-8") as f:
-                f.write(json_content)
-
-            original_size = os.path.getsize(json_file)
-            compressed_size = os.path.getsize(target_file)
+            original_size = file_path.stat().st_size
+            compressed_size = target_path.stat().st_size
             compression_ratio = (1 - compressed_size / original_size) * 100 if original_size > 0 else 0
 
             print(f"✓ 压缩完成: {target_path.name}")
